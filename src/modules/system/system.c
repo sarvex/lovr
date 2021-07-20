@@ -6,7 +6,7 @@
 
 static struct {
   bool initialized;
-  bool pressedKeys[KEY_COUNT];
+  bool pressedKeys[OS_KEY_COUNT];
 } state;
 
 static void onKey(os_button_action action, os_key key, uint32_t scancode, bool repeat) {
