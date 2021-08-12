@@ -180,6 +180,7 @@ troublemakers = {
   glad = '-Wno-pedantic',
   os_android = '-Wno-format-pedantic',
   miniaudio = '-Wno-unused-function',
+  spatializer_phonon = '-Wno-gnu-empty-struct'
 }
 
 for file, flags in pairs(troublemakers) do
@@ -342,10 +343,10 @@ end
 if config.spatializers.phonon then
   cflags_spatializer_phonon += '-Ideps/phonon/include'
   phonon_libs = {
-    win32 = 'deps/phonon/bin/Windows/x64/phonon.dll',
-    macos = 'deps/phonon/lib/OSX/libphonon.dylib',
-    linux = 'deps/phonon/lib/Linux/x64/libphonon.so',
-    android = 'deps/phonon/lib/Android/arm64/libphonon.so'
+    win32 = 'deps/phonon/lib/windows-x64/phonon.dll',
+    macos = 'deps/phonon/lib/osx/libphonon.dylib',
+    linux = 'deps/phonon/lib/linux-x64/libphonon.so',
+    android = 'deps/phonon/lib/android-armv8/libphonon.so'
   }
   assert(phonon_libs[target], 'Phonon is not supported on this target')
   copy(phonon_libs[target], '$(bin)/%b')
