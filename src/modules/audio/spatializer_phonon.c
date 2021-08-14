@@ -1,5 +1,6 @@
 #include "spatializer.h"
 #include "core/maf.h"
+#include <phonon_version.h>
 #include <phonon.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,90 +41,45 @@ static void* phonon_dlsym(void* library, const char* symbol) { return dlsym(libr
 static void phonon_dlclose(void* library) { dlclose(library); }
 #endif
 
-typedef IPLerror fn_iplCreateContext(IPLLogFunction logCallback, IPLAllocateFunction allocateCallback, IPLFreeFunction freeCallback, IPLhandle* context);
-typedef IPLvoid fn_iplDestroyContext(IPLhandle* context);
-typedef IPLvoid fn_iplCleanup(void);
-typedef IPLerror fn_iplCreateScene(IPLhandle context, IPLhandle computeDevice, IPLSceneType sceneType, IPLint32 numMaterials, IPLMaterial* materials, IPLClosestHitCallback closestHitCallback, IPLAnyHitCallback anyHitCallback, IPLBatchedClosestHitCallback batchedClosestHitCallback, IPLBatchedAnyHitCallback batchedAnyHitCallback, IPLvoid* userData, IPLhandle* scene);
-typedef IPLerror fn_iplDestroyScene(IPLhandle* scene);
-typedef IPLvoid fn_iplSaveSceneAsObj(IPLhandle scene, IPLstring fileBaseName);
-typedef IPLerror fn_iplCreateStaticMesh(IPLhandle scene, IPLint32 numVertices, IPLint32 numTriangles, IPLVector3* vertices, IPLTriangle* triangles, IPLint32* materialIndices, IPLhandle* staticMesh);
-typedef IPLerror fn_iplDestroyStaticMesh(IPLhandle* staticMesh);
-typedef IPLerror fn_iplCreateEnvironment(IPLhandle context, IPLhandle computeDevice, IPLSimulationSettings simulationSettings, IPLhandle scene, IPLhandle probeManager, IPLhandle* environment);
-typedef IPLvoid fn_iplDestroyEnvironment(IPLhandle* environment);
-typedef IPLerror fn_iplCreateEnvironmentalRenderer(IPLhandle context, IPLhandle environment, IPLRenderingSettings renderingSettings, IPLAudioFormat outputFormat, IPLSimulationThreadCreateCallback threadCreateCallback, IPLSimulationThreadDestroyCallback threadDestroyCallback, IPLhandle* renderer);
-typedef IPLvoid fn_iplDestroyEnvironmentalRenderer(IPLhandle* renderer);
-typedef IPLerror fn_iplCreateDirectSoundEffect(IPLAudioFormat inputFormat, IPLAudioFormat outputFormat, IPLRenderingSettings renderingSettings, IPLhandle* effect);
-typedef IPLvoid fn_iplDestroyDirectSoundEffect(IPLhandle* effect);
-typedef IPLvoid fn_iplApplyDirectSoundEffect(IPLhandle effect, IPLAudioBuffer inputAudio, IPLDirectSoundPath directSoundPath, IPLDirectSoundEffectOptions options, IPLAudioBuffer outputAudio);
-typedef IPLvoid fn_iplFlushDirectSoundEffect(IPLhandle effect);
-typedef IPLDirectSoundPath fn_iplGetDirectSoundPath(IPLhandle environment, IPLVector3 listenerPosition, IPLVector3 listenerAhead, IPLVector3 listenerUp, IPLSource source, IPLfloat32 sourceRadius, IPLint32 numSamples, IPLDirectOcclusionMode occlusionMode, IPLDirectOcclusionMethod occlusionMethod);
-typedef IPLerror fn_iplCreateBinauralRenderer(IPLhandle context, IPLRenderingSettings renderingSettings, IPLHrtfParams params, IPLhandle* renderer);
-typedef IPLvoid fn_iplDestroyBinauralRenderer(IPLhandle* renderer);
-typedef IPLerror fn_iplCreateBinauralEffect(IPLhandle renderer, IPLAudioFormat inputFormat, IPLAudioFormat outputFormat, IPLhandle* effect);
-typedef IPLvoid fn_iplDestroyBinauralEffect(IPLhandle* effect);
-typedef IPLvoid fn_iplApplyBinauralEffect(IPLhandle effect, IPLhandle binauralRenderer, IPLAudioBuffer inputAudio, IPLVector3 direction, IPLHrtfInterpolation interpolation, IPLfloat32 spatialBlend, IPLAudioBuffer outputAudio);
-typedef IPLvoid fn_iplFlushBinauralEffect(IPLhandle effect);
-typedef IPLerror fn_iplCreateAmbisonicsBinauralEffect(IPLhandle renderer, IPLAudioFormat inputFormat, IPLAudioFormat outputFormat, IPLhandle* effect);
-typedef IPLvoid fn_iplDestroyAmbisonicsBinauralEffect(IPLhandle* effect);
-typedef IPLvoid fn_iplApplyAmbisonicsBinauralEffect(IPLhandle effect, IPLhandle binauralRenderer, IPLAudioBuffer inputAudio, IPLAudioBuffer outputAudio);
-typedef IPLerror fn_iplCreateConvolutionEffect(IPLhandle renderer, IPLBakedDataIdentifier identifier, IPLSimulationType simulationType, IPLAudioFormat inputFormat, IPLAudioFormat outputFormat, IPLhandle* effect);
-typedef IPLvoid fn_iplDestroyConvolutionEffect(IPLhandle* effect);
-typedef IPLvoid fn_iplSetDryAudioForConvolutionEffect(IPLhandle effect, IPLSource source, IPLAudioBuffer dryAudio);
-typedef IPLvoid fn_iplGetWetAudioForConvolutionEffect(IPLhandle effect, IPLVector3 listenerPosition, IPLVector3 listenerAhead, IPLVector3 listenerUp, IPLAudioBuffer wetAudio);
-typedef IPLvoid fn_iplGetMixedEnvironmentalAudio(IPLhandle renderer, IPLVector3 listenerPosition, IPLVector3 listenerAhead, IPLVector3 listenerUp, IPLAudioBuffer mixedWetAudio);
-typedef IPLvoid fn_iplFlushConvolutionEffect(IPLhandle effect);
+typedef IPLerror fn_iplContextCreate(IPLContextSettings* settings, IPLContext* context);
+typedef void fn_iplContextRelease(IPLContext* context);
+typedef IPLerror fn_iplHRTFCreate(IPLContext context, IPLAudioSettings* audioSettings, IPLHRTFSettings* hrtfSettings, IPLHRTF* hrtf);
+typedef void fn_iplHRTFRelease(IPLHRTF* hrtf);
+typedef IPLerror fn_iplSceneCreate(IPLContext context, IPLSceneSettings* settings, IPLScene* scene);
+typedef void fn_iplSceneRelease(IPLScene* scene);
+typedef void fn_iplSceneCommit(IPLScene scene);
+typedef IPLerror fn_iplStaticMeshCreate(IPLScene scene, IPLStaticMeshSettings* settings, IPLStaticMesh* staticMesh);
+typedef void fn_iplStaticMeshRelease(IPLStaticMesh* staticMesh);
+typedef void fn_iplStaticMeshAdd(IPLStaticMesh staticMesh, IPLScene scene);
+typedef void fn_iplStaticMeshRemove(IPLStaticMesh staticMesh, IPLScene scene);
 
 #define PHONON_DECLARE(f) static fn_##f* phonon_##f;
 #define PHONON_LOAD(f) phonon_##f = (fn_##f*) phonon_dlsym(state.library, #f);
 #define PHONON_FOREACH(X)\
-  X(iplCreateContext)\
-  X(iplDestroyContext)\
-  X(iplCleanup)\
-  X(iplCreateScene)\
-  X(iplDestroyScene)\
-  X(iplSaveSceneAsObj)\
-  X(iplCreateStaticMesh)\
-  X(iplDestroyStaticMesh)\
-  X(iplCreateEnvironment)\
-  X(iplDestroyEnvironment)\
-  X(iplCreateEnvironmentalRenderer)\
-  X(iplDestroyEnvironmentalRenderer)\
-  X(iplCreateDirectSoundEffect)\
-  X(iplDestroyDirectSoundEffect)\
-  X(iplApplyDirectSoundEffect)\
-  X(iplFlushDirectSoundEffect)\
-  X(iplGetDirectSoundPath)\
-  X(iplCreateBinauralRenderer)\
-  X(iplDestroyBinauralRenderer)\
-  X(iplCreateBinauralEffect)\
-  X(iplDestroyBinauralEffect)\
-  X(iplApplyBinauralEffect)\
-  X(iplFlushBinauralEffect)\
-  X(iplCreateAmbisonicsBinauralEffect)\
-  X(iplDestroyAmbisonicsBinauralEffect)\
-  X(iplApplyAmbisonicsBinauralEffect)\
-  X(iplCreateConvolutionEffect)\
-  X(iplDestroyConvolutionEffect)\
-  X(iplSetDryAudioForConvolutionEffect)\
-  X(iplGetWetAudioForConvolutionEffect)\
-  X(iplGetMixedEnvironmentalAudio)\
-  X(iplFlushConvolutionEffect)
+  X(iplContextCreate)\
+  X(iplContextRelease)\
+  X(iplHRTFCreate)\
+  X(iplHRTFRelease)\
+  X(iplSceneCreate)\
+  X(iplSceneRelease)\
+  X(iplSceneCommit)\
+  X(iplStaticMeshCreate)\
+  X(iplStaticMeshRelease)\
+  X(iplStaticMeshAdd)\
+  X(iplStaticMeshRemove)
 
 PHONON_FOREACH(PHONON_DECLARE)
 
 static struct {
   void* library;
-  IPLhandle context;
-  IPLhandle scene;
-  IPLhandle mesh;
-  IPLhandle environment;
-  IPLhandle environmentalRenderer;
-  IPLhandle binauralRenderer;
-  IPLhandle ambisonicsBinauralEffect;
+  IPLContext context;
+  IPLHRTF hrtf;
+  IPLScene scene;
+  IPLStaticMesh mesh;
   IPLhandle binauralEffect[MAX_SOURCES];
   IPLhandle directSoundEffect[MAX_SOURCES];
   IPLhandle convolutionEffect[MAX_SOURCES];
-  IPLRenderingSettings renderingSettings;
+  IPLAudioSettings audioSettings;
   float listenerPosition[4];
   float listenerOrientation[4];
   float* scratchpad;
@@ -137,31 +93,24 @@ bool phonon_init() {
 
   PHONON_FOREACH(PHONON_LOAD)
 
+  state.audioSettings.samplingRate = lovrAudioGetSampleRate();
+  state.audioSettings.frameSize = BUFFER_SIZE;
+
   IPLerror status;
-
-  status = phonon_iplCreateContext(NULL, NULL, NULL, &state.context);
+  IPLContextSettings contextSettings = { .version = STEAMAUDIO_VERSION };
+  status = phonon_iplContextCreate(&contextSettings, &state.context);
   if (status != IPL_STATUS_SUCCESS) return phonon_destroy(), false;
 
-  IPLSimulationSettings simulationSettings = { 0 };
-  status = phonon_iplCreateEnvironment(state.context, NULL, simulationSettings, NULL, NULL, &state.environment);
+  IPLHRTFSettings hrtfSettings = { .type = IPL_HRTFTYPE_DEFAULT };
+  status = phonon_iplHRTFCreate(state.context, &state.audioSettings, &hrtfSettings, &state.hrtf);
   if (status != IPL_STATUS_SUCCESS) return phonon_destroy(), false;
 
-  state.renderingSettings.samplingRate = lovrAudioGetSampleRate();
-  state.renderingSettings.frameSize = BUFFER_SIZE;
-  state.renderingSettings.convolutionType = IPL_CONVOLUTIONTYPE_PHONON;
+  IPLSceneSettings sceneSettings = { .type = IPL_SCENETYPE_DEFAULT };
+  status = phonon_iplSceneCreate(state.context, &sceneSettings, &state.scene);
+  if (status != IPL_STATUS_SUCCESS) return phonon_destroy(), false;
 
   state.scratchpad = malloc(BUFFER_SIZE * 4 * sizeof(float));
   if (!state.scratchpad) return phonon_destroy(), false;
-
-  IPLHrtfParams hrtfParams = {
-    .type = IPL_HRTFDATABASETYPE_DEFAULT
-  };
-
-  status = phonon_iplCreateBinauralRenderer(state.context, state.renderingSettings, hrtfParams, &state.binauralRenderer);
-  if (status != IPL_STATUS_SUCCESS) return phonon_destroy(), false;
-
-  status = phonon_iplCreateAmbisonicsBinauralEffect(state.binauralRenderer, AMBISONIC, STEREO, &state.ambisonicsBinauralEffect);
-  if (status != IPL_STATUS_SUCCESS) return phonon_destroy(), false;
 
   return true;
 }
@@ -173,17 +122,29 @@ void phonon_destroy() {
     if (state.directSoundEffect[i]) phonon_iplDestroyDirectSoundEffect(&state.directSoundEffect[i]);
     if (state.convolutionEffect[i]) phonon_iplDestroyConvolutionEffect(&state.convolutionEffect[i]);
   }
-  if (state.ambisonicsBinauralEffect) phonon_iplDestroyAmbisonicsBinauralEffect(&state.ambisonicsBinauralEffect);
-  if (state.binauralRenderer) phonon_iplDestroyBinauralRenderer(&state.binauralRenderer);
-  if (state.environmentalRenderer) phonon_iplDestroyEnvironmentalRenderer(&state.environmentalRenderer);
-  if (state.environment) phonon_iplDestroyEnvironment(&state.environment);
-  if (state.mesh) phonon_iplDestroyStaticMesh(&state.mesh);
-  if (state.scene) phonon_iplDestroyStaticMesh(&state.scene);
-  if (state.context) phonon_iplDestroyContext(&state.context);
-  phonon_iplCleanup();
+  if (state.mesh) phonon_iplStaticMeshRelease(&state.mesh);
+  if (state.scene) phonon_iplSceneRelease(&state.scene);
+  if (state.hrtf) phonon_iplHRTFRelease(&state.hrtf);
+  if (state.context) phonon_iplContextRelease(&state.context);
   phonon_dlclose(state.library);
   memset(&state, 0, sizeof(state));
 }
+
+/*
+  IPLSimulationSettings settings = (IPLSimulationSettings) {
+    .sceneType = IPL_SCENETYPE_PHONON,
+    .maxNumOcclusionSamples = PHONON_OCCLUSION_SAMPLES,
+    .numRays = PHONON_RAYS,
+    .numDiffuseSamples = PHONON_DIFFUSE_SAMPLES,
+    .numBounces = PHONON_BOUNCES,
+    .numThreads = PHONON_THREADS,
+    .irDuration = PHONON_MAX_REVERB,
+    .ambisonicsOrder = PHONON_AMBISONIC_ORDER,
+    .maxConvolutionSources = MAX_SOURCES,
+    .bakingBatchSize = 1,
+    .irradianceMinDistance = .1f
+  };
+*/
 
 uint32_t phonon_apply(Source* source, const float* input, float* output, uint32_t frames, uint32_t why) {
   IPLAudioBuffer in = { .format = MONO, .numSamples = frames, .interleavedBuffer = (float*) input };
@@ -300,74 +261,57 @@ void phonon_setListenerPose(float position[4], float orientation[4]) {
   memcpy(state.listenerOrientation, orientation, sizeof(state.listenerOrientation));
 }
 
+// absorption[3], scattering, transmission[3]
+static const IPLMaterial materials[] = {
+  [MATERIAL_GENERIC] = { { .10f, .20f, .30f }, .05f, { .100f, .050f, .030f } },
+  [MATERIAL_BRICK] = { { .03f, .04f, .07f }, .05f, { .015f, .015f, .015f } },
+  [MATERIAL_CARPET] = { { .24f, .69f, .73f }, .05f, { .020f, .005f, .003f } },
+  [MATERIAL_CERAMIC] = { { .01f, .02f, .02f }, .05f, { .060f, .044f, .011f } },
+  [MATERIAL_CONCRETE] = { { .05f, .07f, .08f }, .05f, { .015f, .002f, .001f } },
+  [MATERIAL_GLASS] = { { .06f, .03f, .02f }, .05f, { .060f, .044f, .011f } },
+  [MATERIAL_GRAVEL] = { { .60f, .70f, .80f }, .05f, { .031f, .012f, .008f } },
+  [MATERIAL_METAL] = { { .20f, .07f, .06f }, .05f, { .200f, .025f, .010f } },
+  [MATERIAL_PLASTER] = { { .12f, .06f, .04f }, .05f, { .056f, .056f, .004f } },
+  [MATERIAL_ROCK] = { { .13f, .20f, .24f }, .05f, { .015f, .002f, .001f } },
+  [MATERIAL_WOOD] = { { .11f, .07f, .06f }, .05f, { .070f, .014f, .005f } }
+};
+
 bool phonon_setGeometry(float* vertices, uint32_t* indices, uint32_t vertexCount, uint32_t indexCount, AudioMaterial material) {
-  if (state.mesh) phonon_iplDestroyStaticMesh(&state.mesh);
-  if (state.scene) phonon_iplDestroyScene(&state.scene);
-  if (state.environment) phonon_iplDestroyEnvironment(&state.environment);
-  if (state.environmentalRenderer) phonon_iplDestroyEnvironment(&state.environmentalRenderer);
-
-  IPLMaterial materials[] = {
-    [MATERIAL_GENERIC] = { .10f, .20f, .30f, .05f, .100f, .050f, .030f },
-    [MATERIAL_BRICK] = { .03f, .04f, .07f, .05f, .015f, .015f, .015f },
-    [MATERIAL_CARPET] = { .24f, .69f, .73f, .05f, .020f, .005f, .003f },
-    [MATERIAL_CERAMIC] = { .01f, .02f, .02f, .05f, .060f, .044f, .011f },
-    [MATERIAL_CONCRETE] = { .05f, .07f, .08f, .05f, .015f, .002f, .001f },
-    [MATERIAL_GLASS] = { .06f, .03f, .02f, .05f, .060f, .044f, .011f },
-    [MATERIAL_GRAVEL] = { .60f, .70f, .80f, .05f, .031f, .012f, .008f },
-    [MATERIAL_METAL] = { .20f, .07f, .06f, .05f, .200f, .025f, .010f },
-    [MATERIAL_PLASTER] = { .12f, .06f, .04f, .05f, .056f, .056f, .004f },
-    [MATERIAL_ROCK] = { .13f, .20f, .24f, .05f, .015f, .002f, .001f },
-    [MATERIAL_WOOD] = { .11f, .07f, .06f, .05f, .070f, .014f, .005f }
-  };
-
-  IPLSimulationSettings settings = (IPLSimulationSettings) {
-    .sceneType = IPL_SCENETYPE_PHONON,
-    .maxNumOcclusionSamples = PHONON_OCCLUSION_SAMPLES,
-    .numRays = PHONON_RAYS,
-    .numDiffuseSamples = PHONON_DIFFUSE_SAMPLES,
-    .numBounces = PHONON_BOUNCES,
-    .numThreads = PHONON_THREADS,
-    .irDuration = PHONON_MAX_REVERB,
-    .ambisonicsOrder = PHONON_AMBISONIC_ORDER,
-    .maxConvolutionSources = MAX_SOURCES,
-    .bakingBatchSize = 1,
-    .irradianceMinDistance = .1f
-  };
-
-  IPLint32* triangleMaterials = malloc(indexCount / 3 * sizeof(IPLint32));
-  if (!triangleMaterials) goto fail;
-
-  for (uint32_t i = 0; i < indexCount / 3; i++) {
-    triangleMaterials[i] = material;
+  if (state.mesh) {
+    phonon_iplStaticMeshRemove(state.mesh, state.scene);
+    phonon_iplSceneCommit(state.scene);
+    phonon_iplStaticMeshRelease(&state.mesh);
+    state.mesh = NULL;
   }
 
-  IPLerror status;
-  status = phonon_iplCreateScene(state.context, NULL, IPL_SCENETYPE_PHONON, 1, materials, NULL, NULL, NULL, NULL, NULL, &state.scene);
-  if (status != IPL_STATUS_SUCCESS) goto fail;
+  uint32_t triangleCount = indexCount / 3;
+  IPLint32* materialIndices = malloc(triangleCount * sizeof(IPLint32));
+  if (!materialIndices) return false;
 
-  if (vertexCount > 0 && indexCount > 0) {
-    status = phonon_iplCreateStaticMesh(state.scene, vertexCount, indexCount / 3, (IPLVector3*) vertices, (IPLTriangle*) indices, triangleMaterials, &state.mesh);
-    if (status != IPL_STATUS_SUCCESS) goto fail;
+  for (uint32_t i = 0; i < triangleCount; i++) {
+    materialIndices[i] = material;
   }
 
-  status = phonon_iplCreateEnvironment(state.context, NULL, settings, state.scene, NULL, &state.environment);
-  if (status != IPL_STATUS_SUCCESS) goto fail;
+  IPLStaticMeshSettings settings = {
+    .numVertices = vertexCount,
+    .numTriangles = triangleCount,
+    .numMaterials = sizeof(materials) / sizeof(materials[0]),
+    .vertices = (IPLVector3*) vertices,
+    .indices = (IPLTriangle*) indices,
+    .materialIndices = materialIndices,
+    .materials = materials
+  };
 
-  status = phonon_iplCreateEnvironmentalRenderer(state.context, state.environment, state.renderingSettings, AMBISONIC, NULL, NULL, &state.environmentalRenderer);
-  if (status != IPL_STATUS_SUCCESS) goto fail;
+  if (phonon_iplStaticMeshCreate(state.scene, &settings, &state.mesh) != IPL_STATUS_SUCCESS) {
+    free(materialIndices);
+    state.mesh = NULL;
+    return false;
+  }
 
-  free(triangleMaterials);
+  phonon_iplStaticMeshAdd(state.mesh, state.scene);
+  phonon_iplSceneCommit(state.scene);
+  free(materialIndices);
   return true;
-
-fail:
-  free(triangleMaterials);
-  if (state.mesh) phonon_iplDestroyStaticMesh(&state.mesh);
-  if (state.scene) phonon_iplDestroyScene(&state.scene);
-  if (state.environment) phonon_iplDestroyEnvironment(&state.environment);
-  if (state.environmentalRenderer) phonon_iplDestroyEnvironmentalRenderer(&state.environmentalRenderer);
-  phonon_iplCreateEnvironment(state.context, NULL, settings, NULL, NULL, &state.environment);
-  phonon_iplCreateEnvironmentalRenderer(state.context, state.environment, state.renderingSettings, AMBISONIC, NULL, NULL, &state.environmentalRenderer);
-  return false;
 }
 
 void phonon_sourceCreate(Source* source) {
