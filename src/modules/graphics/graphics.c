@@ -20,9 +20,13 @@
 #include "glslang_c_interface.h"
 #include "resource_limits_c.h"
 #endif
+#include "lib/renderdoc_app.h"
+#include <windows.h>
 
 uint32_t os_vk_create_surface(void* instance, void** surface);
 const char** os_vk_get_instance_extensions(uint32_t* count);
+HANDLE os_get_win32_window(void);
+uintptr_t gpu_vk_get_instance(void);
 
 #define MAX_TRANSFORMS 16
 #define MAX_PIPELINES 4
@@ -403,6 +407,7 @@ static struct {
   size_t builtinLayout;
   size_t materialLayout;
   Allocator allocator;
+  RENDERDOC_API_1_1_2* renderdoc;
 } state;
 
 // Helpers
@@ -471,6 +476,19 @@ bool lovrGraphicsInit(GraphicsConfig* config) {
   if (!gpu_init(&gpu)) {
     lovrThrow("Failed to initialize GPU");
   }
+
+#if _WIN32
+  HMODULE module = GetModuleHandleA("renderdoc.dll");
+  if (module) {
+    pRENDERDOC_GetAPI RENDERDOC_GetAPI = (pRENDERDOC_GetAPI) GetProcAddress(module, "RENDERDOC_GetAPI");
+    int result = RENDERDOC_GetAPI(eRENDERDOC_API_Version_1_1_2, (void**) &state.renderdoc);
+    if (result) {
+      printf("Found renderdoc\n");
+    }
+  } else {
+    printf("No renderdoc\n");
+  }
+#endif
 
   lovrAssert(state.limits.uniformBufferRange >= 65536, "LÖVR requires the GPU to support a uniform buffer range of at least 64KB");
 
@@ -1072,6 +1090,11 @@ void lovrGraphicsPresent() {
     state.window->renderView = NULL;
     state.presentable = false;
     gpu_present();
+
+    if (state.renderdoc) {
+      uintptr_t instance = gpu_vk_get_instance();
+      state.renderdoc->EndFrameCapture(RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(instance), os_get_win32_window());
+    }
   }
 }
 
@@ -5475,6 +5498,11 @@ static int u64cmp(const void* a, const void* b) {
 static void beginFrame(void) {
   if (state.active) {
     return;
+  }
+
+  if (state.renderdoc) {
+    uintptr_t instance = gpu_vk_get_instance();
+    state.renderdoc->StartFrameCapture(RENDERDOC_DEVICEPOINTER_FROM_VKINSTANCE(instance), os_get_win32_window());
   }
 
   state.active = true;
