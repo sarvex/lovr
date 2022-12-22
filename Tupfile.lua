@@ -103,7 +103,7 @@ cflags = {
   '-Ietc',
   '-Isrc',
   '-Isrc/modules',
-  '-Isrc/lib/stdatomic'
+  '-Isrc/lib/std'
 }
 
 bin = target == 'android' and 'bin/apk/lib/arm64-v8a' or 'bin'
@@ -432,7 +432,6 @@ src += (config.modules.audio or config.modules.data) and 'src/lib/miniaudio/*.c'
 src += config.modules.data and 'src/lib/jsmn/*.c' or nil
 src += config.modules.data and 'src/lib/minimp3/*.c' or nil
 src += config.modules.math and 'src/lib/noise/*.c' or nil
-src += config.modules.thread and 'src/lib/tinycthread/*.c' or nil
 
 -- embed resource files with xxd
 
