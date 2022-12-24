@@ -388,6 +388,7 @@ src = {
   'src/main.c',
   'src/util.c',
   'src/core/fs.c',
+  'src/core/job.c',
   ('src/core/os_%s.c'):format(target),
   'src/core/spv.c',
   'src/core/zip.c',
