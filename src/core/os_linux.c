@@ -336,9 +336,8 @@ void os_window_get_size(uint32_t* width, uint32_t* height) {
   *height = state.height;
 }
 
-void os_window_get_fbsize(uint32_t* width, uint32_t* height) {
-  *width = state.width;
-  *height = state.height;
+float os_window_get_pixel_density(void) {
+  return state.connection ? 1.f : 0.f;
 }
 
 size_t os_get_home_directory(char* buffer, size_t size) {
