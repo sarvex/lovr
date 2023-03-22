@@ -92,10 +92,6 @@ function lovr.boot()
 
   if lovr.headset then
     lovr.headset.start()
-
-    if lovr.headset.getDriver() == 'desktop' then
-      lovr.mirror = nil
-    end
   end
 
   lovr.handlers = setmetatable({}, { __index = lovr })
@@ -125,21 +121,13 @@ function lovr.run()
     if lovr.headset then dt = lovr.headset.update() end
     if lovr.update then lovr.update(dt) end
     if lovr.graphics then
-      if lovr.headset then
-        local pass = lovr.headset.getPass()
-        if pass then
-          local skip = lovr.draw and lovr.draw(pass)
-          if not skip then lovr.graphics.submit(pass) end
-        end
-      end
-      if lovr.system.isWindowOpen() then
-        if lovr.mirror then
-          local pass = lovr.graphics.getWindowPass()
-          local skip = not pass or lovr.mirror(pass)
-          if not skip then lovr.graphics.submit(pass) end
-        end
-        lovr.graphics.present()
-      end
+      local headsetPass = lovr.headset and lovr.headset.getPass()
+      if headsetPass and not lovr.draw or lovr.draw(headsetPass) then headsetPass = nil end
+      local windowPass = lovr.system.isWindowOpen() and lovr.graphics.getWindowPass()
+      if windowPass and not lovr.mirror or lovr.mirror(windowPass) then windowPass = nil end
+      windowPass = windowPass ~= headsetPass and windowPass
+      lovr.graphics.submit(headsetPass, windowPass)
+      lovr.graphics.present()
     end
     if lovr.headset then lovr.headset.submit() end
     if lovr.math then lovr.math.drain() end
